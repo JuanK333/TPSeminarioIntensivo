@@ -1,0 +1,226 @@
+import pandas as pd
+
+TRANFORMO LOS ARCHIVOS CSV EN PARQUET
+from pyarrow import csv, parquet
+from datetime import datetime
+table = csv.read_csv('roade-accidents.csv')
+tableparquet = parquet.write_table(table, 'roade-accidents.csv.parquet')
+table2 = csv.read_csv('miles-driven.csv')
+tableparquet = parquet.write_table(table2, 'miles-driven.csv.parquet')
+
+LEEMOS EL DATASET
+
+df = pd.read_csv("roade-accidents.csv")
+
+df.info()
+df.head()
+
+LAS COLUMNAS REPRESENTAN LAS SIGUENTES MEDICIONES -->
+
+State	
+Number of drivers involved in fatal collisions per billion miles	
+Percentage Of Drivers Involved In Fatal Collisions Who Were Speeding	
+Percentage Of Drivers Involved In Fatal Collisions Who Were Alcohol-Impaired	
+Percentage Of Drivers Involved In Fatal Collisions Who Had Not Been Involved In Any Previous Accidents
+!pip install seaborn
+
+import seaborn as sns
+%matplotlib inline
+
+
+describe = df.describe()
+print(describe)
+
+sns.pairplot(df)
+
+sns.set(rc={'figure.figsize':(18,12)})
+plt.xticks(rotation=50)
+
+sns.barplot(data=df, x = 'state', y ='drvr_fatl_col_bmiles', order = df.sort_values('drvr_fatl_col_bmiles',ascending = False).state).set(title='Muertes por choques por Estado')
+
+sns.set(rc={'figure.figsize':(18,12)})
+plt.xticks(rotation=50)
+
+sns.barplot(data=df, x = 'state', y ='perc_fatl_speed', order = df.sort_values('perc_fatl_speed',ascending = False).state).set(title='% de Muertes por velocidad por Estado')
+
+sns.set(rc={'figure.figsize':(18,12)})
+plt.xticks(rotation=50)
+
+sns.barplot(data=df, x = 'state', y ='perc_fatl_alcohol', order = df.sort_values('perc_fatl_alcohol',ascending = False).state).set(title='% de Muertes por consumo de alcohol por Estado')
+sns.set(rc={'figure.figsize':(18,12)})
+plt.xticks(rotation=50)
+
+sns.barplot(data=df, x = 'state', y ='perc_fatl_1st_time', order = df.sort_values('perc_fatl_1st_time',ascending = False).state).set(title='% de Muertes por accidentes de primera vez por Estado')
+ax=sns.distplot(df['drvr_fatl_col_bmiles'], hist=False)
+
+
+ax.axvline(df['drvr_fatl_col_bmiles'].mean(), color='b')
+
+
+ax.axvline(df['drvr_fatl_col_bmiles'].median(), color='g')
+ax = sns.distplot(df['perc_fatl_speed'], hist=False)
+
+
+ax.axvline(df['perc_fatl_speed'].mean(), color='b')
+
+
+ax.axvline(df['perc_fatl_speed'].median(), color='g')
+ax=sns.distplot(df['perc_fatl_alcohol'], hist=False)
+
+ax.axvline(df['perc_fatl_alcohol'].mean(), color='b')
+
+
+ax.axvline(df['perc_fatl_alcohol'].median(), color='g')
+ax = sns.distplot(df['perc_fatl_1st_time'], hist=False)
+
+ax.axvline(df['perc_fatl_1st_time'].mean(), color='b')
+
+
+ax.axvline(df['perc_fatl_1st_time'].median(), color='g')
+corr = df.corr()
+corr
+
+De la tabla de correlación, veo que la cantidad de accidentes fatales está fuertemente correlacionada con el consumo de alcohol . Pero además, también vemos que algunas de las features se correlacionan entre sí, por ejemplo, el exceso de velocidad y el consumo de alcohol se correlacionan positivamente. Por lo tanto, queremos calcular la asociación del target con cada característica mientras ajustamos el efecto de las características restantes. Esto se puede hacer usando una regresión lineal multivariada.
+
+!pip install sklearn
+!pip install scikit-learn
+
+from sklearn import linear_model
+
+features = df[['perc_fatl_speed', 'perc_fatl_alcohol', 'perc_fatl_1st_time']]
+target = df['drvr_fatl_col_bmiles']
+
+reg = linear_model.LinearRegression()
+
+reg.fit(features, target)
+
+fit_coef = reg.coef_
+fit_coef
+Se ve que  el consumo de alcohol está  asociado debilmente con la cantidad de accidentes fatales en todos los estados. También hay asociaciones entre el consumo de alcohol y las otras dos características, por lo que se podría  tratar de dividir los estados de una manera que tenga en cuenta las tres características.
+
+Una forma de agrupar los datos es usar PCA para visualizar datos en un espacio dimensional reducido donde se puede de detectar patrones a simple vista. 
+
+
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+features_scaled = scaler.fit_transform(features)
+
+
+from sklearn.decomposition import PCA
+pca = PCA()
+
+
+pca.fit(features_scaled)
+
+
+import matplotlib.pyplot as plt
+plt.bar(range(1, pca.n_components_ + 1),  pca.explained_variance_ratio_)
+plt.xlabel('Componente principal #')
+plt.ylabel('Proporcion de la varianza explicada')
+plt.xticks([1, 2, 3])
+
+
+dos_comp = pca.explained_variance_ratio_.cumsum()[1]
+print("La varianza cumulativa de los componentes principales es {}".format(
+    round(dos_comp, 5)))
+
+
+Los primeros dos componentes principales permiten la visualización de los datos en dos dimensiones mientras capturan una alta proporción de la variación (79%) de las tres características: exceso de velocidad, influencia del alcohol y accidentes por primera vez. Esto nos permite u discernir patrones en los datos con el objetivo de encontrar grupos similares.
+
+pca = PCA(n_components=2)
+p_componente = pca.fit_transform(features_scaled)
+
+
+p_component1 = p_componente[:, 0]
+p_component2 = p_componente[:, 1]
+
+
+plt.scatter(p_comp1, p_comp2)
+
+No quedó del todo claro en el diagrama de dispersión de PCA cuántos grupos se agrupan los estados. Para ayudar a identificar una cantidad razonable de clústeres, podemos usar el agrupamiento de KMeans creando un gráfico de sedimentación y encontrando el "elbow", que indica cuando la adición de más clústeres no agrega mucho poder explicativo.
+
+from sklearn.cluster import KMeans
+
+ks = range(1, 10)
+inertia = []
+for k in ks:
+    
+    km = KMeans(n_clusters=k, random_state=8)
+
+    km.fit(features_scaled)
+    
+    inertia.append(km.inertia_)
+    
+
+plt.plot(ks, inertia, marker='o')
+
+km = KMeans(n_clusters=3, random_state=8)
+
+km.fit(features_scaled)
+
+
+palette = sns.color_palette('deep')
+colors = []
+for i in km.labels_:
+  if i == 0:
+    colors.append(palette[0])
+  elif i == 1:
+    colors.append(palette[1])
+  elif i == 2:  
+    colors.append(palette[2])
+    
+plt.scatter(p_component1, p_component2, c=colors)
+
+df['cluster'] = km.labels_
+
+
+pd.melt(df, id_vars='cluster', var_name='measurement', value_name='percent',
+                   value_vars=['perc_fatl_speed', 'perc_fatl_alcohol', 'perc_fatl_1st_time'])
+
+
+sns.violinplot(y='measurement', x='percent', data=melt_car, hue='cluster')
+
+
+TRATO DE IMPLEMENTAR UNA AGRUPACION POR MEDIO DE REDES NEURONALES KOHONEN
+
+!pip install minisom
+from minisom import MiniSom
+
+n_neurons = 9
+m_neurons = 9
+som = MiniSom(n_neurons, m_neurons, input_len=3, sigma=1.5, learning_rate=.5, 
+              neighborhood_function='gaussian', random_seed=0)
+ 
+som.random_weights_init(features_scaled)
+som.train(features_scaled, 1000, verbose=True)  # random training
+plt.figure(figsize=(7, 7))
+frequencies = som.activation_response(features_scaled)
+plt.pcolor(frequencies.T, cmap='Blues') 
+plt.colorbar()
+plt.show()
+from pylab import bone,pcolor,colorbar,plot,show
+bone()
+pcolor(som.distance_map().T)
+colorbar()
+show()
+
+Voy a incluir datos sobre cuántas millas se conducen en cada estado, porque esto nos ayudará a calcular el número total de accidentes fatales en cada estado. Los datos sobre las millas recorridas están disponibles en otro archivo de texto delimitado por tabulaciones. .
+
+
+df2 = pd.read_csv('miles-driven.csv', sep='|')
+
+
+millasaccidentes = df.merge(df2, on='state')
+
+
+millasaccidentes['num_drvr_fatl_col'] = millasaccidentes['drvr_fatl_col_bmiles'] * millasaccidentes['million_miles_annually'] / 1000
+
+
+sns.barplot(x='cluster', y='num_drvr_fatl_col', data=millasaccidentes, estimator=sum, ci=None)
+
+
+medidascluster = millasaccidentes.groupby('cluster')['num_drvr_fatl_col'].agg(['count', 'mean', 'sum'])
+medidascluster
